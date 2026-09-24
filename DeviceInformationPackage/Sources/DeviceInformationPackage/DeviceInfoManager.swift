@@ -19,7 +19,9 @@ final public class DeviceInfoManager: Sendable {
     fileprivate let device = UIDevice.current
     
     public var appVersion: String {
-        return Bundle.main.releaseVersionNumber + "(\(Bundle.main.buildVersionNumber))"
+        let release = Bundle.main.releaseVersionNumber
+        let build = Bundle.main.buildVersionNumber
+        return "\(release) (\(build))"
     }
     
     public var osTheme: UIUserInterfaceStyle {
@@ -46,21 +48,20 @@ final public class DeviceInfoManager: Sendable {
         return device.identifierForVendor?.uuidString ?? "N/A"
     }
     
+    public var theme: DeviceTheme {
+        DeviceTheme(osTheme)
+    }
+    
     public var getStringTheme: String {
-        switch osTheme {
-        case .unspecified:
-            return "light"
-        case .light:
-            return "light"
-        case .dark:
-            return "dark"
-        @unknown default:
-            return "light"
-        }
+        theme.rawValue
     }
     
     public var isSimulator: Bool {
-        return TARGET_OS_SIMULATOR != 0
+        #if targetEnvironment(simulator)
+        return true
+        #else
+        return false
+        #endif
     }
     
     public var isJailBroken: Bool {
@@ -74,7 +75,11 @@ final public class DeviceInfoManager: Sendable {
     }
     
     public func canEnterApp() -> Bool {
-        return !self.isJailBroken && DevicePasscodeHelper.shared.devicePasscodeEnabled()
+        return !self.isUnsafeDevice() && DevicePasscodeHelper.shared.devicePasscodeEnabled()
+    }
+    
+    public func isUnsafeDevice() -> Bool {
+        return self.isJailBroken
     }
 }
 
@@ -92,7 +97,8 @@ extension Bundle {
 @MainActor
 private struct RootedHelper {
     static func hasCydiaInstalled() -> Bool {
-        return UIApplication.shared.canOpenURL(URL(string: "cydia://")!)
+        guard let url = URL(string: "cydia://") else { return false }
+        return UIApplication.shared.canOpenURL(url)
     }
     
     static func isContainsSuspiciousApps() -> Bool {
@@ -114,18 +120,17 @@ private struct RootedHelper {
     }
     
     static func canEditSystemFiles() -> Bool {
-        let jailBreakText = "Developer Insider"
+        let testString = "Developer Insider"
+        let testPath = "/private/jb_test.txt"
         do {
-            try jailBreakText.write(toFile: jailBreakText, atomically: true, encoding: .utf8)
+            try testString.write(toFile: testPath, atomically: true, encoding: .utf8)
+            try? FileManager.default.removeItem(atPath: testPath)
             return true
         } catch {
             return false
         }
     }
     
-    /**
-     Add more paths here to check for jail break
-     */
     static var suspiciousAppsPathToCheck: [String] {
         return ["/Applications/Cydia.app",
                 "/Applications/blackra1n.app",
